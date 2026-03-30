@@ -1240,3 +1240,466 @@ document.getElementById('global-search')?.addEventListener('keydown',e=>{
   if(e.key==='Enter') globalSearch(e.target.value);
 });
 renderDashboard();
+// Check backup status and show reminder if needed
+checkBackupReminder();
+// Update sidebar backup status
+(function updateSidebarBackupStatus() {
+  const log = getBackupLog();
+  const last = log.find(l => l.type === "JSON Export");
+  const el = document.getElementById("sidebar-backup-status");
+  if (!el) return;
+  if (!last) { el.textContent = "⚠️ No backup yet"; el.style.color = "#FCA5A5"; }
+  else {
+    const days = Math.floor((Date.now() - new Date(last.date)) / (1000*60*60*24));
+    if (days === 0) { el.textContent = "✅ Backed up today"; el.style.color = "#6EE7B7"; }
+    else if (days <= 7) { el.textContent = "✅ Backup " + days + "d ago"; el.style.color = "#FCD34D"; }
+    else { el.textContent = "⚠️ Backup " + days + "d ago!"; el.style.color = "#FCA5A5"; }
+  }
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// BACKUP, RESTORE & EXPORT SYSTEM
+// Added: Full data safety — JSON backup, JSON restore, Excel export
+// ═══════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────
+// 1. EXPORT FULL DATABASE AS JSON BACKUP FILE
+// Downloads a .json file the user can save to Google Drive / email
+// ─────────────────────────────────────────────────────────────
+function exportBackupJSON() {
+  const backup = {
+    _meta: {
+      app: 'TradeFlow',
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      exportedDate: today(),
+      totalBuyers: DB.buyers.length,
+      totalInvoices: DB.invoices.length,
+      totalPayments: DB.payments.length,
+    },
+    ...DB
+  };
+
+  const json = JSON.stringify(backup, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `TradeFlow_Backup_${today()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  toast(`Backup downloaded: TradeFlow_Backup_${today()}.json`, '💾');
+  logBackupEvent('JSON Export', backup._meta);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 2. IMPORT / RESTORE FROM JSON BACKUP FILE
+// Reads the backup file and restores all data
+// ─────────────────────────────────────────────────────────────
+function importBackupJSON(file) {
+  if (!file) return;
+
+  // Validate file type
+  if (!file.name.endsWith('.json')) {
+    toast('Please select a valid .json backup file', '⚠️');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const backup = JSON.parse(e.target.result);
+
+      // Validate it looks like a TradeFlow backup
+      if (!backup.buyers || !backup.invoices || !backup.payments) {
+        toast('Invalid backup file — does not look like a TradeFlow backup', '❌');
+        return;
+      }
+
+      // Show confirmation with stats before overwriting
+      const stats = `
+Buyers: ${backup.buyers.length}
+Invoices: ${backup.invoices.length}
+Payments: ${backup.payments.length}
+Shipments: ${(backup.shipments||[]).length}
+Documents: ${(backup.documents||[]).length}
+Services: ${(backup.services||[]).length}
+Follow-ups: ${(backup.followups||[]).length}
+Backed up on: ${backup._meta?.exportedDate || 'Unknown date'}
+
+This will REPLACE all current data. Continue?`;
+
+      if (!confirm(stats)) {
+        toast('Restore cancelled', '↩️');
+        return;
+      }
+
+      // Restore — merge with defaults for any missing collections
+      DB.buyers     = backup.buyers     || [];
+      DB.invoices   = backup.invoices   || [];
+      DB.shipments  = backup.shipments  || [];
+      DB.payments   = backup.payments   || [];
+      DB.documents  = backup.documents  || [];
+      DB.dispatches = backup.dispatches || [];
+      DB.services   = backup.services   || [];
+      DB.followups  = backup.followups  || [];
+      DB.samples    = backup.samples    || [];
+      DB.releases   = backup.releases   || [];
+
+      saveDB();
+      renderDashboard();
+      renderBackupPage();
+      toast(`✅ Restored successfully! ${backup.buyers.length} buyers, ${backup.invoices.length} invoices, ${backup.payments.length} payments`, '✅');
+
+    } catch (err) {
+      toast('Failed to read backup file. File may be corrupted.', '❌');
+      console.error('Import error:', err);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 3. EXPORT TO EXCEL (CSV format — opens in Excel/Sheets)
+// Creates multiple sheets as separate CSV downloads
+// ─────────────────────────────────────────────────────────────
+
+function csvEscape(val) {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+function buildCSV(headers, rows) {
+  const lines = [
+    headers.map(csvEscape).join(','),
+    ...rows.map(row => row.map(csvEscape).join(','))
+  ];
+  return lines.join('\n');
+}
+
+function downloadCSV(filename, csvContent) {
+  // Add BOM for Excel UTF-8 compatibility
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportExcelBuyers() {
+  const headers = ['Buyer ID','Company Name','Contact Person','Email','Phone','Country','Address','Payment Terms','Currency','Notes','Total Invoiced (USD)','Total Paid (USD)','Total Outstanding (USD)'];
+  const rows = DB.buyers.map(b => {
+    const t = buyerTotals(b.id);
+    return [b.id, b.company, b.contact, b.email, b.phone, b.country, b.address, b.payTerms, b.currency, b.notes, t.totalInvoiced.toFixed(2), t.totalPaid.toFixed(2), t.totalOutstanding.toFixed(2)];
+  });
+  downloadCSV(`TradeFlow_Buyers_${today()}.csv`, buildCSV(headers, rows));
+  toast('Buyers exported to Excel ✓', '📊');
+}
+
+function exportExcelInvoices() {
+  const headers = ['Invoice No','Buyer','Product','Invoice Date','Due Date','Currency','Invoice Amount','Total Paid','Outstanding','Payment Terms','Status','Days Overdue'];
+  const rows = DB.invoices.map(i => {
+    const status = computeInvoiceStatus(i);
+    const paid   = invoiceTotalPaid(i.id);
+    const out    = invoiceOutstanding(i);
+    const daysOv = (status === 'Overdue' && i.dueDate) ? daysDiff(i.dueDate) : 0;
+    return [i.invoiceNo, buyerName(i.buyerId), i.product, i.date, i.dueDate, i.currency, i.amount.toFixed(2), paid.toFixed(2), out.toFixed(2), i.payTerms, status, daysOv];
+  });
+  downloadCSV(`TradeFlow_Invoices_${today()}.csv`, buildCSV(headers, rows));
+  toast('Invoices exported to Excel ✓', '📊');
+}
+
+function exportExcelPayments() {
+  const headers = ['Payment Date','Buyer','Invoice No','Amount','Currency','Amount in Invoice Currency','Exchange Rate','Payment Mode','Reference No','Place Received','Notes'];
+  const rows = DB.payments.map(p => {
+    return [p.date, buyerName(p.buyerId), invoiceNo(p.invoiceId), p.amount.toFixed(2), p.currency, (p.amountInInvCurrency||p.amount).toFixed(2), (p.exchangeRate||1).toFixed(4), p.mode, p.ref||'', p.placeReceived||'', p.notes||''];
+  });
+  downloadCSV(`TradeFlow_Payments_${today()}.csv`, buildCSV(headers, rows));
+  toast('Payments exported to Excel ✓', '📊');
+}
+
+function exportExcelServices() {
+  const headers = ['Date','Buyer','Invoice No','Service Type','Description','Amount','Currency','Vendor','Reference','Notes'];
+  const rows = DB.services.map(s => {
+    return [s.date, buyerName(s.buyerId), s.invoiceId ? invoiceNo(s.invoiceId) : '', s.type, s.desc, s.amount.toFixed(2), s.currency, s.vendor||'', s.ref||'', s.notes||''];
+  });
+  downloadCSV(`TradeFlow_Services_${today()}.csv`, buildCSV(headers, rows));
+  toast('Service charges exported ✓', '📊');
+}
+
+function exportExcelFollowups() {
+  const headers = ['Date','Buyer','Invoice No','Method','Notes','Next Follow-up Date','Status'];
+  const rows = DB.followups.map(f => {
+    return [f.date, buyerName(f.buyerId), f.invoiceId ? invoiceNo(f.invoiceId) : '', f.method, f.notes||'', f.nextDate||'', f.status];
+  });
+  downloadCSV(`TradeFlow_Followups_${today()}.csv`, buildCSV(headers, rows));
+  toast('Follow-ups exported ✓', '📊');
+}
+
+function exportExcelShipments() {
+  const headers = ['Shipment No','Buyer','Invoice No','Date','Mode','Vessel/Carrier','Container No','Port of Loading','Port of Discharge','ETD','ETA','Telex Release Date','Goods Release Date','Delivery Date','Release Status','Days Since Telex'];
+  const rows = DB.shipments.map(s => {
+    const rel = DB.releases.find(r => r.shipmentId === s.id);
+    const relStatus = computeReleaseStatus(rel);
+    const telexDays = rel?.telexReleaseDate ? daysDiff(rel.telexReleaseDate) : '';
+    return [s.shipmentNo, buyerName(s.buyerId), invoiceNo(s.invoiceId), s.date, s.mode, s.vessel||'', s.containerNo||'', s.portLoading, s.portDischarge, s.etd||'', s.eta||'', rel?.telexReleaseDate||'', rel?.goodsReleaseDate||'', rel?.deliveryDate||'', relStatus, telexDays];
+  });
+  downloadCSV(`TradeFlow_Shipments_${today()}.csv`, buildCSV(headers, rows));
+  toast('Shipments exported ✓', '📊');
+}
+
+function exportExcelAging() {
+  const bucketLabels = ['0-30 Days','31-60 Days','61-90 Days','90+ Days'];
+  const headers = ['Buyer','Invoice No','Product','Due Date','Days Overdue','Outstanding Amount','Currency','Aging Bucket'];
+  const rows = [];
+  DB.invoices.forEach(i => {
+    const bk = agingBucket(i);
+    if (bk === null) return;
+    rows.push([buyerName(i.buyerId), i.invoiceNo, i.product, i.dueDate, daysDiff(i.dueDate), invoiceOutstanding(i).toFixed(2), i.currency, bucketLabels[bk]]);
+  });
+  if (!rows.length) { toast('No overdue invoices to export', 'ℹ️'); return; }
+  downloadCSV(`TradeFlow_Aging_${today()}.csv`, buildCSV(headers, rows));
+  toast('Aging report exported ✓', '📊');
+}
+
+// Export EVERYTHING at once as a zip-like package (multiple downloads)
+function exportAllExcel() {
+  exportExcelBuyers();
+  setTimeout(() => exportExcelInvoices(), 400);
+  setTimeout(() => exportExcelPayments(), 800);
+  setTimeout(() => exportExcelServices(), 1200);
+  setTimeout(() => exportExcelShipments(), 1600);
+  setTimeout(() => exportExcelFollowups(), 2000);
+  toast('Exporting all 6 Excel files…', '📊');
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4. BACKUP LOG — track when backups were taken
+// ─────────────────────────────────────────────────────────────
+const BACKUP_LOG_KEY = 'tradeflow_backup_log';
+
+function logBackupEvent(type, meta) {
+  const log = getBackupLog();
+  log.unshift({ type, date: new Date().toISOString(), meta });
+  if (log.length > 20) log.length = 20; // keep last 20
+  localStorage.setItem(BACKUP_LOG_KEY, JSON.stringify(log));
+}
+
+function getBackupLog() {
+  try { return JSON.parse(localStorage.getItem(BACKUP_LOG_KEY) || '[]'); } catch(e) { return []; }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 5. BACKUP PAGE RENDERER
+// ─────────────────────────────────────────────────────────────
+function renderBackupPage() {
+  const storageUsed = (JSON.stringify(DB).length / 1024).toFixed(1);
+  const storageMax  = 5120; // 5MB typical localStorage limit
+  const storagePct  = Math.min(100, ((storageUsed / storageMax) * 100).toFixed(1));
+
+  const st = dashStats();
+  const lastLog = getBackupLog();
+  const lastBackup = lastLog.find(l => l.type === 'JSON Export');
+
+  // Status indicator
+  const daysSinceBackup = lastBackup
+    ? Math.floor((Date.now() - new Date(lastBackup.date)) / (1000*60*60*24))
+    : null;
+
+  const backupStatus = daysSinceBackup === null
+    ? { color: 'var(--red)', icon: '🔴', text: 'No backup taken yet — your data is at risk!' }
+    : daysSinceBackup === 0
+    ? { color: 'var(--green)', icon: '🟢', text: 'Backed up today — you are safe' }
+    : daysSinceBackup <= 7
+    ? { color: 'var(--amber)', icon: '🟡', text: `Last backup ${daysSinceBackup} days ago — consider backing up soon` }
+    : { color: 'var(--red)', icon: '🔴', text: `Last backup ${daysSinceBackup} days ago — please back up now!` };
+
+  setHTML('backup-content', `
+
+    <!-- STATUS BANNER -->
+    <div style="background:${backupStatus.color}15;border:1px solid ${backupStatus.color}40;border-radius:10px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:24px">${backupStatus.icon}</span>
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--ink)">${backupStatus.text}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">
+          ${lastBackup ? `Last backup: ${new Date(lastBackup.date).toLocaleString('en-GB')}` : 'Tap "Download JSON Backup" below to create your first backup'}
+        </div>
+      </div>
+    </div>
+
+    <!-- DATA SUMMARY -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-hdr"><h3>📦 Your Current Data</h3></div>
+      <div class="card-body">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:14px">
+          <div class="stat-card"><div class="s-label">Buyers</div><div class="s-val">${DB.buyers.length}</div></div>
+          <div class="stat-card"><div class="s-label">Invoices</div><div class="s-val">${DB.invoices.length}</div></div>
+          <div class="stat-card info"><div class="s-label">Total Invoiced</div><div class="s-val" style="font-size:14px">${fmtAmt(st.totalInvoiced,'USD')}</div></div>
+          <div class="stat-card success"><div class="s-label">Total Paid</div><div class="s-val" style="font-size:14px">${fmtAmt(st.totalPaid,'USD')}</div></div>
+          <div class="stat-card"><div class="s-label">Payments</div><div class="s-val">${DB.payments.length}</div></div>
+          <div class="stat-card"><div class="s-label">Shipments</div><div class="s-val">${DB.shipments.length}</div></div>
+          <div class="stat-card"><div class="s-label">Documents</div><div class="s-val">${DB.documents.length}</div></div>
+          <div class="stat-card"><div class="s-label">Services</div><div class="s-val">${DB.services.length}</div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+            <span style="font-size:12px;color:var(--ink3)">Storage used</span>
+            <span style="font-size:12px;font-weight:600">${storageUsed} KB / 5,120 KB</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width:${storagePct}%;background:${storagePct>80?'var(--red)':storagePct>50?'var(--amber)':'var(--green)'}"></div>
+          </div>
+          <div style="font-size:11px;color:var(--ink4);margin-top:4px">${storagePct}% of browser storage used</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BACKUP & RESTORE -->
+    <div class="two-col" style="margin-bottom:16px;align-items:start">
+
+      <!-- JSON BACKUP -->
+      <div class="card" style="margin:0">
+        <div class="card-hdr"><h3>💾 JSON Backup (Recommended)</h3></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--ink3);margin-bottom:14px;line-height:1.6">
+            Downloads a complete backup of ALL your data as a <strong>.json</strong> file.
+            Save it to <strong>Google Drive, iCloud, or email it to yourself</strong>.
+            You can restore from this file at any time, on any device.
+          </p>
+          <button class="btn btn-primary" style="width:100%;margin-bottom:8px" onclick="exportBackupJSON()">
+            ⬇️ Download JSON Backup
+          </button>
+          <div style="font-size:11.5px;color:var(--ink4);text-align:center">Includes all buyers, invoices, payments, shipments, documents, services, follow-ups</div>
+        </div>
+      </div>
+
+      <!-- RESTORE -->
+      <div class="card" style="margin:0">
+        <div class="card-hdr"><h3>📂 Restore from Backup</h3></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--ink3);margin-bottom:14px;line-height:1.6">
+            Select a previously downloaded <strong>TradeFlow_Backup_*.json</strong> file to restore all data.
+            <span style="color:var(--red);font-weight:600">This will replace all current data.</span>
+          </p>
+          <div class="file-drop" onclick="document.getElementById('restore-file-input').click()" style="margin-bottom:8px">
+            <input type="file" id="restore-file-input" accept=".json" style="display:none" onchange="importBackupJSON(this.files[0])"/>
+            <span class="fd-icon">📂</span>
+            <div class="fd-text">Tap to select backup file<br><small>TradeFlow_Backup_YYYY-MM-DD.json</small></div>
+          </div>
+          <div style="font-size:11.5px;color:var(--amber-t);background:var(--amber-s);padding:8px 10px;border-radius:6px;border:1px solid #fcd34d">
+            ⚠️ Restoring will overwrite all current data. Download a fresh backup first if you have unsaved changes.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXCEL EXPORTS -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-hdr">
+        <h3>📊 Export to Excel / CSV</h3>
+        <button class="btn btn-primary btn-sm" onclick="exportAllExcel()">⬇️ Export All (6 files)</button>
+      </div>
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--ink3);margin-bottom:14px">Each export opens in Excel, Google Sheets, or Numbers. Use for reporting and sharing with your accountant.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
+          <button class="btn btn-secondary" onclick="exportExcelBuyers()">🏢 Buyers Summary</button>
+          <button class="btn btn-secondary" onclick="exportExcelInvoices()">📄 All Invoices</button>
+          <button class="btn btn-secondary" onclick="exportExcelPayments()">💳 All Payments</button>
+          <button class="btn btn-secondary" onclick="exportExcelServices()">🧾 Service Charges</button>
+          <button class="btn btn-secondary" onclick="exportExcelShipments()">🚢 Shipments</button>
+          <button class="btn btn-secondary" onclick="exportExcelFollowups()">📌 Follow-ups</button>
+          <button class="btn btn-secondary" onclick="exportExcelAging()">⏳ Aging Report</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- BACKUP LOG -->
+    <div class="card">
+      <div class="card-hdr"><h3>📋 Backup History</h3></div>
+      <div class="card-body">
+        ${lastLog.length === 0
+          ? `<div class="text-muted" style="text-align:center;padding:20px">No backup history yet. Download your first backup above.</div>`
+          : `<div class="tbl-wrap">
+              <table class="data-table">
+                <thead><tr><th>Date & Time</th><th>Type</th><th>Buyers</th><th>Invoices</th><th>Payments</th></tr></thead>
+                <tbody>
+                  ${lastLog.map(l => `<tr>
+                    <td>${new Date(l.date).toLocaleString('en-GB')}</td>
+                    <td><span class="badge b-blue">${l.type}</span></td>
+                    <td>${l.meta?.totalBuyers || '—'}</td>
+                    <td>${l.meta?.totalInvoices || '—'}</td>
+                    <td>${l.meta?.totalPayments || '—'}</td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>`
+        }
+      </div>
+    </div>
+
+    <!-- TIPS -->
+    <div style="background:var(--brand-soft);border:1px solid #93c5fd;border-radius:10px;padding:16px 20px;margin-top:16px">
+      <div style="font-size:13px;font-weight:600;color:var(--brand2);margin-bottom:10px">💡 Best practices to keep your data safe</div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        ${[
+          ['📅','Back up every week','Download a JSON backup every Monday and save to Google Drive'],
+          ['📧','Email it to yourself','Forward the backup file to your email so you have it in 2 places'],
+          ['☁️','Save to iCloud or Google Drive','This means if your phone is lost, your data is safe'],
+          ['📱','Add to Home Screen','Open the app URL in Safari → Share → Add to Home Screen for easy daily access'],
+          ['🔄','Restore on any device','If you get a new phone, just open the app, go to Backup, and restore your file'],
+        ].map(([icon, title, desc]) => `
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <span style="font-size:16px;flex-shrink:0">${icon}</span>
+            <div><div style="font-size:13px;font-weight:600;color:var(--ink)">${title}</div><div style="font-size:12px;color:var(--ink3)">${desc}</div></div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+  `);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 6. AUTO-BACKUP REMINDER (runs on app load)
+// Shows a warning if no backup in 7+ days
+// ─────────────────────────────────────────────────────────────
+function checkBackupReminder() {
+  const log = getBackupLog();
+  const last = log.find(l => l.type === 'JSON Export');
+  if (!last) {
+    // First time user — show gentle reminder after 3 seconds
+    setTimeout(() => {
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.style.cssText = 'background:#1464F4;max-width:320px;cursor:pointer';
+      t.innerHTML = `<span>💾</span><span>No backup yet. <strong>Go to Backup page</strong> to protect your data →</span>`;
+      t.onclick = () => { nav('backup'); t.remove(); };
+      document.getElementById('toasts')?.appendChild(t);
+      setTimeout(() => { t.classList.add('removing'); setTimeout(() => t.remove(), 200); }, 8000);
+    }, 3000);
+    return;
+  }
+  const days = Math.floor((Date.now() - new Date(last.date)) / (1000*60*60*24));
+  if (days >= 7) {
+    setTimeout(() => {
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.style.cssText = 'background:#D97706;max-width:320px;cursor:pointer';
+      t.innerHTML = `<span>⚠️</span><span>Last backup ${days} days ago. <strong>Back up now</strong> →</span>`;
+      t.onclick = () => { nav('backup'); t.remove(); };
+      document.getElementById('toasts')?.appendChild(t);
+      setTimeout(() => { t.classList.add('removing'); setTimeout(() => t.remove(), 200); }, 10000);
+    }, 2000);
+  }
+}
