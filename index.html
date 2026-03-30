@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TradeFlow — Buyer Payment & Shipment Manager</title>
+  <link rel="stylesheet" href="style.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+</head>
+<body>
+<div class="app-shell">
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-mark">TF</div>
+    <div>
+      <div class="brand-name">TradeFlow</div>
+      <div class="brand-sub">Trade & Payment Manager</div>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-label">Overview</div>
+    <button class="nav-item active" data-page="dashboard"><span class="ni">📊</span>Dashboard</button>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-label">Buyers</div>
+    <button class="nav-item" data-page="buyers"><span class="ni">🏢</span>All Buyers</button>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-label">Trade</div>
+    <button class="nav-item" data-page="invoices"><span class="ni">📄</span>Invoices</button>
+    <button class="nav-item" data-page="shipments"><span class="ni">🚢</span>Shipments</button>
+    <button class="nav-item" data-page="documents"><span class="ni">📎</span>Documents</button>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-label">Finance</div>
+    <button class="nav-item" data-page="payments"><span class="ni">💳</span>Payments <span class="nav-badge" id="badge-overdue" style="display:none">!</span></button>
+    <button class="nav-item" data-page="services"><span class="ni">🧾</span>Service Charges</button>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-label">Reports</div>
+    <button class="nav-item" data-page="followups"><span class="ni">📌</span>Follow-ups</button>
+    <button class="nav-item" data-page="aging"><span class="ni">⏳</span>Aging Report</button>
+  </div>
+
+  <div class="sidebar-footer">
+    TradeFlow v1.0 · All data local
+  </div>
+</aside>
+
+<!-- ══════════ MAIN ══════════ -->
+<div class="main-area">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <button id="mobile-menu-btn" style="display:none;background:none;border:none;font-size:20px;cursor:pointer;color:var(--ink3)">☰</button>
+    <div class="topbar-search">
+      <span class="si">🔍</span>
+      <input type="text" id="global-search" placeholder="Search buyers, invoices, products… (Enter)"/>
+    </div>
+    <div class="topbar-spacer"></div>
+    <button class="btn btn-primary btn-sm" onclick="openModal('modal-buyer')">+ Buyer</button>
+    <button class="btn btn-secondary btn-sm" onclick="openModal('modal-invoice')">+ Invoice</button>
+    <button class="btn btn-secondary btn-sm" onclick="openPayModal()">+ Payment</button>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- ═══════ DASHBOARD ═══════ -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-hdr">
+        <div><h1>Dashboard</h1><p>Your international trade overview</p></div>
+        <div class="page-hdr-actions">
+          <button class="btn btn-secondary btn-sm" onclick="renderDashboard()">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="stat-row" id="dash-stats"></div>
+
+      <div class="two-col" style="margin-bottom:16px;align-items:start">
+        <div class="card" style="margin:0">
+          <div class="card-hdr"><h3>🔴 Overdue Invoices</h3></div>
+          <div class="card-body" id="dash-overdue"></div>
+        </div>
+        <div class="card" style="margin:0">
+          <div class="card-hdr"><h3>⏳ Aging Summary</h3></div>
+          <div class="card-body" id="dash-aging"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr"><h3>💰 Outstanding by Buyer</h3><button class="btn btn-ghost btn-sm" onclick="nav('aging')">View Aging Report →</button></div>
+        <div class="card-body">
+          <div class="tbl-wrap">
+            <table class="data-table">
+              <thead><tr><th>Buyer</th><th>Country</th><th>Invoices</th><th>Invoiced</th><th>Paid</th><th>Outstanding</th><th>Overdue</th></tr></thead>
+              <tbody id="dash-buyer-out"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card" style="margin:0">
+          <div class="card-hdr"><h3>💳 Recent Payments</h3><button class="btn btn-ghost btn-sm" onclick="nav('payments')">View All →</button></div>
+          <div class="card-body">
+            <div class="tbl-wrap">
+              <table class="data-table">
+                <thead><tr><th>Date</th><th>Buyer</th><th>Invoice</th><th>Amount</th><th>Mode</th><th>Ref</th></tr></thead>
+                <tbody id="dash-recent-pay"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin:0">
+          <div class="card-hdr"><h3>📌 Recent Follow-ups</h3><button class="btn btn-ghost btn-sm" onclick="nav('followups')">View All →</button></div>
+          <div class="card-body">
+            <div class="tbl-wrap">
+              <table class="data-table">
+                <thead><tr><th>Date</th><th>Buyer</th><th>Invoice</th><th>Method</th><th>Notes</th><th>Status</th><th>Next</th></tr></thead>
+                <tbody id="dash-followups"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ BUYERS LIST ═══════ -->
+    <div class="page" id="page-buyers">
+      <div class="page-hdr">
+        <div><h1>Buyers</h1><p>All buyer accounts</p></div>
+        <button class="btn btn-primary" onclick="openModal('modal-buyer')">+ Add Buyer</button>
+      </div>
+      <div class="filter-bar">
+        <input type="text" placeholder="Search buyers…" oninput="renderBuyers(this.value)" style="min-width:240px"/>
+      </div>
+      <div id="buyer-grid"></div>
+    </div>
+
+    <!-- ═══════ BUYER DETAIL ═══════ -->
+    <div class="page" id="page-buyer-detail">
+      <div class="page-hdr">
+        <div id="bd-header"></div>
+        <div class="page-hdr-actions">
+          <button class="btn btn-secondary btn-sm" id="bd-statement-btn">📊 Statement</button>
+          <button class="btn btn-secondary btn-sm" id="bd-add-svc-btn">+ Service</button>
+          <button class="btn btn-secondary btn-sm" id="bd-add-fu-btn">+ Follow-up</button>
+          <button class="btn btn-secondary btn-sm" id="bd-add-pay-btn">+ Payment</button>
+          <button class="btn btn-primary btn-sm" id="bd-add-inv-btn">+ Invoice</button>
+        </div>
+      </div>
+      <div class="stat-row" id="bd-stats"></div>
+      <div class="tab-strip">
+        <div class="tab-item active" onclick="switchTab(this,'bd-invoices-tab')">Invoices</div>
+        <div class="tab-item" onclick="switchTab(this,'bd-services-tab')">Service Charges</div>
+        <div class="tab-item" onclick="switchTab(this,'bd-payments-tab')">Payments</div>
+        <div class="tab-item" onclick="switchTab(this,'bd-followups-tab')">Follow-ups</div>
+      </div>
+
+      <div id="bd-invoices-tab">
+        <div class="card">
+          <div class="card-hdr"><h3>Invoices</h3></div>
+          <div class="tbl-wrap">
+            <table class="data-table">
+              <thead><tr><th>Invoice No</th><th>Date</th><th>Product</th><th>Amount</th><th>Paid</th><th>Outstanding</th><th>Due Date</th><th>Status</th><th></th></tr></thead>
+              <tbody id="bd-invoices"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div id="bd-services-tab" class="hidden">
+        <div class="card">
+          <div class="card-hdr"><h3>Service Charges</h3></div>
+          <div class="tbl-wrap">
+            <table class="data-table">
+              <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Invoice</th><th>Amount</th><th>Vendor</th><th>Ref</th></tr></thead>
+              <tbody id="bd-services"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div id="bd-payments-tab" class="hidden">
+        <div class="card">
+          <div class="card-hdr"><h3>Payment History</h3></div>
+          <div class="tbl-wrap">
+            <table class="data-table">
+              <thead><tr><th>Date</th><th>Invoice</th><th>Amount</th><th>Mode</th><th>Reference</th><th>Place</th><th>Notes</th></tr></thead>
+              <tbody id="bd-payments"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div id="bd-followups-tab" class="hidden">
+        <div class="card">
+          <div class="card-hdr"><h3>Follow-up History</h3></div>
+          <div class="card-body" id="bd-followups"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ INVOICES LIST ═══════ -->
+    <div class="page" id="page-invoices">
+      <div class="page-hdr">
+        <div><h1>Invoices</h1><p>All buyer invoices with payment status</p></div>
+        <button class="btn btn-primary" onclick="openModal('modal-invoice')">+ Create Invoice</button>
+      </div>
+      <div class="filter-bar">
+        <input type="text" placeholder="Search invoice no, product…" oninput="renderInvoices(this.value)"/>
+        <select id="inv-buyer-filter" onchange="renderInvoices('',this.value)"><option value="">All Buyers</option></select>
+        <select onchange="renderInvoices('','',this.value)">
+          <option value="">All Status</option>
+          <option>Draft</option><option>Issued</option><option>Partially Paid</option><option>Paid</option><option>Overdue</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="renderInvoices()">Reset</button>
+      </div>
+      <div class="card" style="padding:0">
+        <div class="tbl-wrap">
+          <table class="data-table">
+            <thead><tr><th>Invoice No</th><th>Buyer</th><th>Product</th><th>Date</th><th>Due Date</th><th>Amount</th><th>Paid</th><th>Outstanding</th><th>Collected</th><th>Status</th><th></th></tr></thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ INVOICE DETAIL ═══════ -->
+    <div class="page" id="page-invoice-detail">
+      <div class="page-hdr">
+        <div id="inv-header"></div>
+        <div class="page-hdr-actions">
+          <button class="btn btn-ghost btn-sm" onclick="nav('invoices')">← Back</button>
+          <button class="btn btn-secondary btn-sm" id="inv-add-fu-btn">+ Follow-up</button>
+          <button class="btn btn-secondary btn-sm" id="inv-add-svc-btn">+ Service</button>
+          <button class="btn btn-secondary btn-sm" id="inv-add-doc-btn">+ Document</button>
+          <button class="btn btn-secondary btn-sm" id="inv-add-ship-btn">+ Shipment</button>
+          <button class="btn btn-primary btn-sm" id="inv-add-pay-btn">💳 Add Payment</button>
+        </div>
+      </div>
+
+      <div id="inv-meter"></div>
+      <div id="inv-info" style="margin-bottom:16px"></div>
+
+      <div class="tab-strip">
+        <div class="tab-item active" onclick="switchTab(this,'inv-tab-payments')">💳 Payments</div>
+        <div class="tab-item" onclick="switchTab(this,'inv-tab-release')">🚢 Release Status</div>
+        <div class="tab-item" onclick="switchTab(this,'inv-tab-docs')">📎 Documents</div>
+        <div class="tab-item" onclick="switchTab(this,'inv-tab-shipments')">📦 Shipments</div>
+        <div class="tab-item" onclick="switchTab(this,'inv-tab-services')">🧾 Services</div>
+        <div class="tab-item" onclick="switchTab(this,'inv-tab-samples')">🎁 Samples</div>
+        <div class="tab-item" onclick="switchTab(this,'inv-tab-followups')">📌 Follow-ups</div>
+      </div>
+
+      <!-- Payments tab -->
+      <div id="inv-tab-payments">
+        <div class="card">
+          <div class="card-hdr"><h3>Payment Records</h3></div>
+          <div class="tbl-wrap">
+            <table class="data-table">
+              <thead><tr><th>Date</th><th>Amount</th><th>Converted</th><th>Mode</th><th>Reference</th><th>Place Received</th><th>Notes</th><th></th></tr></thead>
+              <tbody id="inv-payments"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Release tab -->
+      <div id="inv-tab-release" class="hidden">
+        <div id="inv-release"></div>
+        <button class="btn btn-secondary btn-sm" onclick="openReleaseModal(currentShipId())">Update Release Status</button>
+      </div>
+
+      <!-- Docs tab -->
+      <div id="inv-tab-docs" class="hidden">
+        <div class="card">
+          <div class="card-hdr"><h3>Document Checklist</h3><button class="btn btn-secondary btn-sm" onclick="openModal('modal-dispatch',null,currentInvoiceId)">📬 Record Dispatch</button></div>
+          <div class="card-body" id="inv-docs"></div>
+        </div>
+      </div>
+
+      <!-- Shipments tab -->
+      <div id="inv-tab-shipments" class="hidden">
+        <div class="card">
+          <div class="card-hdr"><h3>Linked Shipments</h3></div>
+          <div class="tbl-wrap">
+            <table class="data-table">
+              <thead><tr><th>Shipment No</th><th>Date</th><th>Mode</th><th>Container</th><th>Route</th><th>ETA</th><th>Release</th><th></th></tr></thead>
+              <tbody id="inv-shipments"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Services tab -->
+      <div id="inv-tab-services" class="hidden">
+        <div class="card">
+          <div class="card-hdr"><h3>Service Charges for this Invoice</h3></div>
+          <div class="tbl-wrap">
+            <table class="data-table">
+              <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th><th>Vendor</th></tr></thead>
+              <tbody id="inv-services"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Samples tab -->
+      <div id="inv-tab-samples" class="hidden">
+        <div class="card">
+          <div class="card-hdr"><h3>Samples Sent</h3></div>
+          <div class="card-body" id="inv-samples"></div>
+        </div>
+      </div>
+
+      <!-- Follow-ups tab -->
+      <div id="inv-tab-followups" class="hidden">
+        <div class="card">
+          <div class="card-hdr"><h3>Follow-up Log</h3></div>
+          <div class="card-body" id="inv-followups"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ SHIPMENTS ═══════ -->
+    <div class="page" id="page-shipments">
+      <div class="page-hdr">
+        <div><h1>Shipments</h1><p>All shipments with release tracking</p></div>
+        <button class="btn btn-primary" onclick="openModal('modal-shipment')">+ Add Shipment</button>
+      </div>
+      <div class="card" style="padding:0">
+        <div class="tbl-wrap">
+          <table class="data-table">
+            <thead><tr><th>Shipment No</th><th>Buyer</th><th>Invoice</th><th>Date</th><th>Mode</th><th>Container</th><th>Port of Loading</th><th>Port of Discharge</th><th>ETA</th><th>Release</th><th>Telex Date</th><th>Days Since</th><th></th></tr></thead>
+            <tbody id="ship-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ DOCUMENTS ═══════ -->
+    <div class="page" id="page-documents">
+      <div class="page-hdr">
+        <div><h1>Documents</h1><p>All uploaded documents and certificates</p></div>
+        <button class="btn btn-primary" onclick="openModal('modal-document')">+ Add Document</button>
+      </div>
+      <div class="card" style="padding:0">
+        <div class="tbl-wrap">
+          <table class="data-table">
+            <thead><tr><th>Type</th><th>Name</th><th>Buyer</th><th>Invoice</th><th>Upload Date</th><th>File</th><th>Notes</th></tr></thead>
+            <tbody id="doc-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ PAYMENTS ═══════ -->
+    <div class="page" id="page-payments">
+      <div class="page-hdr">
+        <div><h1>Payments</h1><p>All payment receipts and records</p></div>
+        <button class="btn btn-primary" onclick="openPayModal()">+ Record Payment</button>
+      </div>
+      <div class="filter-bar">
+        <input type="text" placeholder="Search ref, buyer…" oninput="renderPayments(this.value)"/>
+        <select id="pay-buyer-filter" onchange="renderPayments('',this.value)"><option value="">All Buyers</option></select>
+      </div>
+      <div class="card" style="padding:0">
+        <div class="tbl-wrap">
+          <table class="data-table">
+            <thead><tr><th>Date</th><th>Buyer</th><th>Invoice</th><th>Amount</th><th>Mode</th><th>Reference</th><th>Place Received</th><th>Notes</th><th></th></tr></thead>
+            <tbody id="pay-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ SERVICES ═══════ -->
+    <div class="page" id="page-services">
+      <div class="page-hdr">
+        <div><h1>Service Charges</h1><p>Customs, freight, logistics and other charges</p></div>
+        <button class="btn btn-primary" onclick="openModal('modal-service')">+ Add Service</button>
+      </div>
+      <div class="filter-bar">
+        <select id="svc-buyer-filter" onchange="renderServices(this.value)"><option value="">All Buyers</option></select>
+      </div>
+      <div class="card" style="padding:0">
+        <div class="tbl-wrap">
+          <table class="data-table">
+            <thead><tr><th>Date</th><th>Buyer</th><th>Invoice</th><th>Type</th><th>Description</th><th>Amount</th><th>Vendor</th><th>Reference</th></tr></thead>
+            <tbody id="svc-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ FOLLOW-UPS ═══════ -->
+    <div class="page" id="page-followups">
+      <div class="page-hdr">
+        <div><h1>Follow-ups</h1><p>Upcoming reminders and follow-up log</p></div>
+        <button class="btn btn-primary" onclick="openModal('modal-followup')">+ Log Follow-up</button>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-hdr"><h3>📅 Upcoming / Pending</h3></div>
+        <div class="card-body" id="fu-upcoming"></div>
+      </div>
+      <div class="card">
+        <div class="card-hdr"><h3>All Follow-ups</h3></div>
+        <div class="tbl-wrap">
+          <table class="data-table">
+            <thead><tr><th>Date</th><th>Buyer</th><th>Invoice</th><th>Method</th><th>Notes</th><th>Next Date</th><th>Status</th><th></th></tr></thead>
+            <tbody id="fu-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ AGING REPORT ═══════ -->
+    <div class="page" id="page-aging">
+      <div class="page-hdr">
+        <div><h1>Aging Report</h1><p>Outstanding balances by age — based on due date vs today</p></div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-hdr"><h3>Outstanding by Buyer (Aging Buckets)</h3></div>
+        <div class="tbl-wrap">
+          <table class="aging-table">
+            <thead><tr><th>Buyer</th><th>0–30 Days</th><th>31–60 Days</th><th>61–90 Days</th><th>90+ Days</th><th>Total</th></tr></thead>
+            <tbody id="aging-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hdr"><h3>Invoice-Level Aging Detail</h3></div>
+        <div class="tbl-wrap">
+          <table class="data-table">
+            <thead><tr><th>Invoice No</th><th>Buyer</th><th>Due Date</th><th>Days Overdue</th><th>Outstanding</th><th>Bucket</th></tr></thead>
+            <tbody id="aging-inv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main-area -->
+</div><!-- /app-shell -->
+
+<!-- ═══════════════ TOAST ═══════════════ -->
+<div class="toast-container" id="toasts"></div>
+
+<!-- ═══════════════════════════════════════
+     MODALS
+═══════════════════════════════════════ -->
+
+<!-- ADD BUYER -->
+<div class="modal-overlay hidden" id="modal-buyer">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div><h2>Add Buyer</h2><p>Create a new buyer account</p></div>
+      <button class="modal-close" onclick="closeModal('modal-buyer')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-section">
+        <div class="form-section-title">Company Details</div>
+        <div class="form-grid g2">
+          <div class="form-field full"><label>Company Name <span class="req">*</span></label><input id="b-company" placeholder="Al-Faris Trading LLC"/></div>
+          <div class="form-field"><label>Contact Person</label><input id="b-contact" placeholder="Ahmed Al-Faris"/></div>
+          <div class="form-field"><label>Country</label><input id="b-country" placeholder="UAE"/></div>
+          <div class="form-field"><label>Email</label><input id="b-email" type="email" placeholder="ahmed@company.com"/></div>
+          <div class="form-field"><label>Phone / WhatsApp</label><input id="b-phone" placeholder="+971-50-123-4567"/></div>
+          <div class="form-field"><label>WhatsApp (if different)</label><input id="b-whatsapp" placeholder="+971-50-123-4567"/></div>
+          <div class="form-field full"><label>Address</label><input id="b-address" placeholder="Deira, Dubai, UAE"/></div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">Default Settings</div>
+        <div class="form-grid g2">
+          <div class="form-field"><label>Default Payment Terms</label>
+            <select id="b-payterms">${PAY_TERMS.map(t=>`<option>${t}</option>`).join('')}</select>
+          </div>
+          <div class="form-field"><label>Preferred Currency</label>
+            <select id="b-currency">${CURRENCIES.map(c=>`<option>${c}</option>`).join('')}</select>
+          </div>
+          <div class="form-field full"><label>Notes</label><textarea id="b-notes" placeholder="Any notes about this buyer…"></textarea></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-buyer')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBuyer()">Save Buyer</button>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE INVOICE -->
+<div class="modal-overlay hidden" id="modal-invoice">
+  <div class="modal modal-lg">
+    <div class="modal-hdr">
+      <div><h2>Create Invoice</h2><p>New order/invoice for a buyer</p></div>
+      <button class="modal-close" onclick="closeModal('modal-invoice')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid g2">
+        <div class="form-field"><label>Buyer <span class="req">*</span></label><select id="inv-buyer"><option value="">Select buyer…</option></select></div>
+        <div class="form-field"><label>Invoice Number <span class="req">*</span></label><input id="inv-no" placeholder="INV-2025-001"/></div>
+        <div class="form-field full"><label>Product Name <span class="req">*</span></label><input id="inv-product" placeholder="Cotton Fabric (100m rolls)"/></div>
+        <div class="form-field full"><label>Description</label><textarea id="inv-desc" placeholder="280 gsm cotton twill fabric…"></textarea></div>
+        <div class="form-field"><label>Invoice Date</label><input id="inv-date" type="date"/></div>
+        <div class="form-field"><label>Due Date</label><input id="inv-due" type="date"/></div>
+        <div class="form-field"><label>Invoice Amount <span class="req">*</span></label><input id="inv-amount" type="number" placeholder="12500" min="0"/></div>
+        <div class="form-field"><label>Currency</label>
+          <select id="inv-currency">${CURRENCIES.map(c=>`<option>${c}</option>`).join('')}</select>
+        </div>
+        <div class="form-field"><label>Payment Terms</label>
+          <select id="inv-payterms">${PAY_TERMS.map(t=>`<option>${t}</option>`).join('')}</select>
+        </div>
+        <div class="form-field full"><label>Notes</label><textarea id="inv-notes" placeholder="Dispatch by Jan 20. Include AZO cert…"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-invoice')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveInvoice()">Create Invoice</button>
+    </div>
+  </div>
+</div>
+
+<!-- RECORD PAYMENT -->
+<div class="modal-overlay hidden" id="modal-payment">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div><h2>Record Payment</h2><p>Log a payment received from buyer</p></div>
+      <button class="modal-close" onclick="closeModal('modal-payment')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid g2">
+        <div class="form-field"><label>Buyer <span class="req">*</span></label><select id="pay-buyer"><option value="">Select buyer…</option></select></div>
+        <div class="form-field"><label>Invoice <span class="req">*</span></label><select id="pay-invoice"><option value="">Select invoice…</option></select></div>
+        <div class="form-field"><label>Payment Date</label><input id="pay-date" type="date"/></div>
+        <div class="form-field"><label>Amount <span class="req">*</span></label><input id="pay-amount" type="number" placeholder="5000" min="0"/></div>
+        <div class="form-field"><label>Currency</label>
+          <select id="pay-currency">${CURRENCIES.map(c=>`<option>${c}</option>`).join('')}</select>
+        </div>
+        <div class="form-field"><label>Exchange Rate (if diff currency)</label><input id="pay-exrate" type="number" placeholder="1" value="1" min="0" step="0.0001"/></div>
+        <div class="form-field"><label>Payment Mode</label>
+          <select id="pay-mode">${PAY_MODE.map(m=>`<option>${m}</option>`).join('')}</select>
+        </div>
+        <div class="form-field"><label>Reference Number</label><input id="pay-ref" placeholder="TT/2025/0041"/></div>
+        <div class="form-field full"><label>Place Received (Country/City/Bank)</label><input id="pay-place" placeholder="Dubai / Emirates NBD"/></div>
+        <div class="form-field full"><label>Notes</label><textarea id="pay-notes" placeholder="First advance payment, balance due…"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-payment')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePayment()">Save Payment</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD SHIPMENT -->
+<div class="modal-overlay hidden" id="modal-shipment">
+  <div class="modal modal-lg">
+    <div class="modal-hdr">
+      <div><h2>Add Shipment</h2><p>Record shipment details for an invoice</p></div>
+      <button class="modal-close" onclick="closeModal('modal-shipment')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid g2">
+        <div class="form-field"><label>Buyer <span class="req">*</span></label><select id="ship-buyer"><option value="">Select buyer…</option></select></div>
+        <div class="form-field"><label>Invoice <span class="req">*</span></label><select id="ship-invoice"><option value="">Select invoice…</option></select></div>
+        <div class="form-field"><label>Shipment No</label><input id="ship-no" placeholder="Auto-generated if blank"/></div>
+        <div class="form-field"><label>Shipment Date</label><input id="ship-date" type="date"/></div>
+        <div class="form-field"><label>Shipping Mode</label>
+          <select id="ship-mode">${SHIP_MODE.map(m=>`<option>${m}</option>`).join('')}</select>
+        </div>
+        <div class="form-field"><label>Vessel / Carrier Name</label><input id="ship-vessel" placeholder="MSC Harmony"/></div>
+        <div class="form-field"><label>Voyage / Flight No</label><input id="ship-voyage" placeholder="V-245"/></div>
+        <div class="form-field"><label>Container No / AWB</label><input id="ship-container" placeholder="MSCU7312840"/></div>
+        <div class="form-field"><label>Port of Loading</label><input id="ship-pol" placeholder="Mundra, India"/></div>
+        <div class="form-field"><label>Port of Discharge</label><input id="ship-pod" placeholder="Jebel Ali, UAE"/></div>
+        <div class="form-field"><label>ETD</label><input id="ship-etd" type="date"/></div>
+        <div class="form-field"><label>ETA</label><input id="ship-eta" type="date"/></div>
+        <div class="form-field full"><label>Shipment Notes</label><textarea id="ship-notes" placeholder="20ft container, CIF terms…"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-shipment')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveShipment()">Save Shipment</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD DOCUMENT -->
+<div class="modal-overlay hidden" id="modal-document">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div><h2>Add Document</h2><p>Upload and record a shipment document</p></div>
+      <button class="modal-close" onclick="closeModal('modal-document')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid g2">
+        <div class="form-field"><label>Buyer <span class="req">*</span></label><select id="doc-buyer"><option value="">Select buyer…</option></select></div>
+        <div class="form-field"><label>Invoice</label><select id="doc-invoice"><option value="">Select invoice…</option></select></div>
+        <div class="form-field"><label>Shipment</label><select id="doc-shipment"><option value="">Select shipment…</option></select></div>
+        <div class="form-field"><label>Document Type <span class="req">*</span></label>
+          <select id="doc-type">${DOC_TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
+        </div>
+        <div class="form-field full"><label>Document Name / File Name <span class="req">*</span></label><input id="doc-name" placeholder="BL-SHP-2025-001.pdf"/></div>
+        <div class="form-field"><label>Upload Date</label><input id="doc-date" type="date"/></div>
+        <div class="form-field full">
+          <label>File Upload</label>
+          <div class="file-drop" onclick="this.querySelector('input').click()">
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.doc,.docx"/>
+            <span class="fd-icon">📎</span>
+            <div class="fd-text">Click to upload or drag & drop<br><small>PDF, Images, Excel, Word — max 10MB</small></div>
+          </div>
+        </div>
+        <div class="form-field full"><label>Notes</label><textarea id="doc-notes" placeholder="Original BL, courier dispatched…"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-document')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDocument()">Save Document</button>
+    </div>
+  </div>
+</div>
+
+<!-- SERVICE CHARGE -->
+<div class="modal-overlay hidden" id="modal-service">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div><h2>Add Service Charge</h2><p>Customs, freight, logistics or other charge</p></div>
+      <button class="modal-close" onclick="closeModal('modal-service')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid g2">
+        <div class="form-field"><label>Buyer <span class="req">*</span></label><select id="svc-buyer"><option value="">Select buyer…</option></select></div>
+        <div class="form-field"><label>Linked Invoice (optional)</label><select id="svc-invoice"><option value="">Select invoice…</option></select></div>
+        <div class="form-field"><label>Service Type <span class="req">*</span></label>
+          <select id="svc-type">${SVC_TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
+        </div>
+        <div class="form-field"><label>Date</label><input id="svc-date" type="date"/></div>
+        <div class="form-field full"><label>Description</label><input id="svc-desc" placeholder="Customs clearance at Jebel Ali port"/></div>
+        <div class="form-field"><label>Amount <span class="req">*</span></label><input id="svc-amount" type="number" placeholder="320" min="0"/></div>
+        <div class="form-field"><label>Currency</label>
+          <select id="svc-currency">${CURRENCIES.map(c=>`<option>${c}</option>`).join('')}</select>
+        </div>
+        <div class="form-field full"><label>Vendor / Carrier</label><input id="svc-vendor" placeholder="Global Customs Dubai"/></div>
+        <div class="form-field full"><label>Reference / Bill No</label><input id="svc-ref" placeholder="CC/JA/2025/112"/></div>
+        <div class="form-field full"><label>Notes</label><textarea id="svc-notes"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-service')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveService()">Save Service Charge</button>
+    </div>
+  </div>
+</div>
+
+<!-- FOLLOW-UP -->
+<div class="modal-overlay hidden" id="modal-followup">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div><h2>Log Follow-up</h2><p>Record a follow-up with a buyer</p></div>
+      <button class="modal-close" onclick="closeModal('modal-followup')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid g2">
+        <div class="form-field"><label>Buyer <span class="req">*</span></label><select id="fu-buyer"><option value="">Select buyer…</option></select></div>
+        <div class="form-field"><label>Linked Invoice (optional)</label><select id="fu-invoice"><option value="">Select invoice…</option></select></div>
+        <div class="form-field"><label>Follow-up Date</label><input id="fu-date" type="date"/></div>
+        <div class="form-field"><label>Method</label>
+          <select id="fu-method">${FOLLOW_METHOD.map(m=>`<option>${m}</option>`).join('')}</select>
+        </div>
+        <div class="form-field full"><label>Notes</label><textarea id="fu-notes" placeholder="Buyer said will pay by next week. Confirmed shipment received."></textarea></div>
+        <div class="form-field"><label>Next Follow-up Date</label><input id="fu-next" type="date"/></div>
+        <div class="form-field"><label>Status</label>
+          <select id="fu-status">${FOLLOW_STATUS.map(s=>`<option>${s}</option>`).join('')}</select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-followup')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveFollowup()">Save Follow-up</button>
+    </div>
+  </div>
+</div>
+
+<!-- RELEASE STATUS -->
+<div class="modal-overlay hidden" id="modal-release">
+  <div class="modal modal-sm">
+    <div class="modal-hdr">
+      <div><h2>Update Release Status</h2><p>Telex, goods release, and delivery dates</p></div>
+      <button class="modal-close" onclick="closeModal('modal-release')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="rel-shipment-id"/>
+      <div class="form-grid">
+        <div class="form-field"><label>📜 Telex Release Date</label><input id="rel-telex" type="date"/><div class="hint">Leave blank if not yet released</div></div>
+        <div class="form-field"><label>📦 Goods Release Date</label><input id="rel-goods" type="date"/></div>
+        <div class="form-field"><label>🚚 Delivery Date</label><input id="rel-delivery" type="date"/></div>
+        <div class="form-field full"><label>Notes</label><textarea id="rel-notes" placeholder="Telex issued after buyer's advance confirmation…"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-release')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRelease()">Update Release</button>
+    </div>
+  </div>
+</div>
+
+<!-- DOCUMENT DISPATCH -->
+<div class="modal-overlay hidden" id="modal-dispatch">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div><h2>Record Document Dispatch</h2><p>Log when documents were sent to the buyer</p></div>
+      <button class="modal-close" onclick="closeModal('modal-dispatch')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid g2">
+        <div class="form-field"><label>Buyer <span class="req">*</span></label><select id="dispatch-buyer"><option value="">Select buyer…</option></select></div>
+        <div class="form-field"><label>Invoice <span class="req">*</span></label><select id="dispatch-invoice"><option value="">Select invoice…</option></select></div>
+        <div class="form-field"><label>Dispatch Date</label><input id="dispatch-date" type="date"/></div>
+        <div class="form-field"><label>Dispatch Mode</label>
+          <select id="dispatch-mode">${DISPATCH_MODE.map(m=>`<option>${m}</option>`).join('')}</select>
+        </div>
+        <div class="form-field full"><label>Tracking Reference (if courier)</label><input id="dispatch-ref" placeholder="DHL-7823991"/></div>
+        <div class="form-field full">
+          <label>Documents Sent (select all that apply)</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
+            ${DOC_TYPES.slice(0,6).map(t=>`<label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" name="dispatch-docs" value="${t}"/> ${t}</label>`).join('')}
+          </div>
+        </div>
+        <div class="form-field full"><label>Notes</label><textarea id="dispatch-notes" placeholder="Sent via DHL courier, original BL included…"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-dispatch')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDispatch()">Save Dispatch Record</button>
+    </div>
+  </div>
+</div>
+
+<!-- BUYER STATEMENT MODAL -->
+<div class="modal-overlay hidden" id="modal-statement">
+  <div class="modal modal-lg" style="max-width:900px;max-height:95vh">
+    <div class="modal-hdr">
+      <div><h2>Buyer Account Statement</h2></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-secondary btn-sm" onclick="printStatement()">🖨 Print / PDF</button>
+        <button class="modal-close" onclick="closeModal('modal-statement')">✕</button>
+      </div>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div id="statement-content"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Tab switching helper
+function switchTab(btn, targetId) {
+  const strip = btn.closest('.tab-strip');
+  const content = strip.nextElementSibling;
+  // Get all tab content siblings
+  let el = strip.nextElementSibling;
+  while(el) {
+    if (el.classList.contains('tab-item') || el.tagName==='DIV') {
+      el.classList.add('hidden');
+    }
+    el = el.nextElementSibling;
+  }
+  // Deactivate all tabs
+  strip.querySelectorAll('.tab-item').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  // Show target
+  document.getElementById(targetId)?.classList.remove('hidden');
+}
+// Get current shipment for invoice
+function currentShipId() {
+  const ships = DB.shipments.filter(s=>s.invoiceId===currentInvoiceId);
+  return ships[0]?.id||null;
+}
+</script>
+<script src="app.js"></script>
+</body>
+</html>
