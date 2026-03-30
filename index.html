@@ -50,8 +50,13 @@
     <button class="nav-item" data-page="aging"><span class="ni">⏳</span>Aging Report</button>
   </div>
 
+  <div class="nav-group">
+    <div class="nav-group-label">Data Safety</div>
+    <button class="nav-item" data-page="backup" id="nav-backup"><span class="ni">💾</span>Backup &amp; Export</button>
+  </div>
+
   <div class="sidebar-footer">
-    TradeFlow v1.0 · All data local
+    TradeFlow v1.0<br><span id="sidebar-backup-status" style="font-size:10px"></span>
   </div>
 </aside>
 
@@ -442,6 +447,18 @@
             <tbody id="aging-inv-tbody"></tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+
+    <!-- ═══════ BACKUP & EXPORT ═══════ -->
+    <div class="page" id="page-backup">
+      <div class="page-hdr">
+        <div><h1>Backup &amp; Export</h1><p>Keep your data safe — download backups and export to Excel</p></div>
+        <button class="btn btn-primary" onclick="exportBackupJSON()">⬇️ Download Backup Now</button>
+      </div>
+      <div id="backup-content">
+        <div style="text-align:center;padding:40px;color:var(--ink3)">Loading backup status…</div>
       </div>
     </div>
 
